@@ -1,3 +1,6 @@
 # ninja log v5
-0	478	1696835628225044683	CMakeFiles/Assignment2_Paradigms.dir/main.cpp.o	b89f0932a2adb7f4
-479	525	1696835628273790335	Assignment2_Paradigms	28f75790eaa3f194
+0	53	1700310021513274779	build.ninja	a0460dca7c6871b5
+1	493	1700307584207436261	CMakeFiles/Assignment2_Paradigms.dir/main.cpp.o	b89f0932a2adb7f4
+493	540	1700307584256892952	Assignment2_Paradigms	e20f6a6a02a56e69
+4	461	1700310318117099889	CMakeFiles/Assignment2_Paradigms.dir/main.cpp.o	b89f0932a2adb7f4
+461	503	1700310318161230145	Assignment2_Paradigms	e20f6a6a02a56e69

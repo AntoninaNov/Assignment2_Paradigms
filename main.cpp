@@ -1,7 +1,12 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <sstream>
 #include <memory>
+#include <stdexcept>
+#include "FileReader.h"
+#include "FileWriter.h"
+#include "CaesarCipher.h"
 
 using namespace std;
 
@@ -62,9 +67,18 @@ private:
     }
 };
 
+class Cursor {
+public:
+    int lineIndex;
+    int charIndex;
+
+    Cursor() : lineIndex(0), charIndex(0) {}
+};
+
 class TextList {
 private:
     unique_ptr<TextNode> head;
+    Cursor cursor;
 
     TextNode* findLastTextNode() {
         TextNode* current = head.get();
@@ -81,6 +95,14 @@ private:
 public:
     TextList() : head(make_unique<TextNode>()) {}
 
+    void setCursor(int line, int pos) {
+        cursor.lineIndex = line;
+        cursor.charIndex = pos;
+    }
+
+    void printCursorPosition() {
+        cout << "Cursor is at line " << cursor.lineIndex << ", position " << cursor.charIndex << endl;
+    }
     void appendToEnd(const string &textToAppend) {
         undoStack.pushState(head);
         redoStack.clear();
@@ -104,37 +126,42 @@ public:
         cout << "Enter the file name for saving: ";
         getline(cin, filename);
 
-        ofstream file(filename);
-        if (file.is_open()) {
+        FileWriter writer; // Create an instance of FileWriter
+
+        try {
+            stringstream fileContent;
             for (TextNode* current = head.get(); current; current = current->next.get()) {
-                file << current->content;
+                fileContent << current->content;
                 if (current->next) {
-                    file << '\n';
+                    fileContent << '\n';
                 }
             }
-            file.close();
+            writer.write(filename, fileContent.str()); // Use FileWriter to write to file
             cout << "Text has been saved successfully\n";
-        } else {
-            cout << "Error: Could not save to file!\n";
+        } catch (const runtime_error& e) {
+            cerr << "Error: " << e.what() << endl;
         }
     }
-
     void loadFromFile() {
         undoStack.pushState(head);
         redoStack.clear();
+
         string filename;
         cout << "Enter the file name for loading: ";
         getline(cin, filename);
 
-        ifstream file(filename);
-        if (file.is_open()) {
+        try {
+            FileReader reader;
+            string fileContent = reader.read(filename);
+
             head = make_unique<TextNode>(); // Clearing out the existing linked list
 
             TextNode* current = head.get();
+            stringstream ss(fileContent);
             string line;
             bool isFirstLine = true;
 
-            while (getline(file, line)) {
+            while (getline(ss, line)) {
                 if (isFirstLine) {
                     current->content = line;
                     isFirstLine = false;
@@ -144,12 +171,12 @@ public:
                 }
             }
 
-            file.close();
             cout << "Text has been loaded successfully\n";
-        } else {
-            cout << "Error: Could not load from file!\n";
+        } catch (const runtime_error& e) {
+            cerr << "Error: " << e.what() << endl;
         }
     }
+
 
     TextNode* findTextNodeAtIndex(int index) {
         int currentIndex = 0;
@@ -243,6 +270,9 @@ public:
             cout << "No more steps to undo!" << endl;
             return;
         }
+        // Push the current state to the redo stack before undoing
+        redoStack.pushState(head);
+        // Then pop the last state from the undo stack
         head = undoStack.popState();
     }
 
@@ -251,9 +281,12 @@ public:
             cout << "No more steps to redo!" << endl;
             return;
         }
-        undoStack.pushState(head);  // Save current state for undo
+        // Save the current state to undo stack before redoing
+        undoStack.pushState(head);
+        // Then pop the last state from the redo stack
         head = redoStack.popState();
     }
+
 
     void cutTextByIndexes() {
         undoStack.pushState(head);
@@ -326,29 +359,65 @@ public:
         cin >> lineIndex >> charIndex;
         cin.ignore();  // Clear input buffer
 
-        string textToReplace;
-        cout << "Enter the text you want to replace: ";
-        getline(cin, textToReplace);
-
         TextNode* targetNode = findTextNodeAtIndex(lineIndex);
         if (!targetNode) {
             cout << "Line index provided is out of bounds!" << endl;
             return;
         }
 
-        size_t posToReplace = targetNode->content.find(textToReplace, charIndex);
-
-        if (posToReplace != string::npos) {
-            cout << "Enter new text to insert: ";
-            string newText;
-            getline(cin, newText);
-            targetNode->content.replace(posToReplace, textToReplace.length(), newText);
-        } else {
-            cout << "Text to replace not found from the given index!" << endl;
+        if (charIndex < 0 || charIndex >= targetNode->content.size()) {
+            cout << "Invalid character index provided!" << endl;
+            return;
         }
+
+        cout << "Enter new text to insert: ";
+        string newText;
+        getline(cin, newText);
+
+        targetNode->content.replace(charIndex, newText.length(), newText);
     }
 
 };
+
+void handleNormalMode() {
+    cout << "Choose operation (1 for Encrypt, 2 for Decrypt): ";
+    int operation;
+    cin >> operation;
+    cin.ignore();
+
+    string inputPath, outputPath;
+    int key;
+    cout << "Enter input file path: ";
+    getline(cin, inputPath);
+    cout << "Enter output file path: ";
+    getline(cin, outputPath);
+    cout << "Enter key: ";
+    cin >> key;
+    cin.ignore();
+
+    FileReader reader;
+    FileWriter writer;
+    string content = reader.read(inputPath);
+    string result = (operation == 1) ? CaesarCipher::encryptText(content, key) : CaesarCipher::decryptText(content, key);
+    writer.write(outputPath, result);
+}
+
+void handleSecretMode() {
+    string inputPath, outputPath;
+    cout << "Enter input file path: ";
+    getline(cin, inputPath);
+    cout << "Enter output file path: ";
+    getline(cin, outputPath);
+
+    int key = CaesarCipher::generateRandomKey();
+    cout << "Generated key (for your record): " << key << endl;
+
+    FileReader reader;
+    FileWriter writer;
+    string content = reader.read(inputPath);
+    string result = CaesarCipher::encryptText(content, key);
+    writer.write(outputPath, result);
+}
 
 void clearConsole() {
 #ifdef _WIN32
@@ -377,12 +446,14 @@ void displayMenu() {
     cout << "14 - Copy text by line and index" << endl;
     cout << "15 - Paste text by line and index" << endl;
     cout << "16 - Insert with replacement by line and index" << endl;
+    cout << "17 - Encrypt/Decrypt file (Normal Mode)" << endl;
+    cout << "18 - Encrypt file (Secret Mode)" << endl;
     cout << "Your choice: ";
 }
 
 int main() {
     TextList list;
-    char userCommand;
+    int userCommand;
 
     while (true) {
         // Display menu at the beginning of each loop iteration
@@ -392,7 +463,7 @@ int main() {
         cin.ignore();  // Clear input buffer
 
         switch (userCommand) {
-            case '1':
+            case 1:
             {
                 string textToAppend;
                 cout << "Enter text to append: ";
@@ -400,57 +471,65 @@ int main() {
                 list.appendToEnd(textToAppend);
             }
                 break;
-            case '2':
+            case 2:
                 list.startNewLine();
                 break;
-            case '3':
+            case 3:
                 list.saveToFile();
                 break;
-            case '4':
+            case 4:
                 list.loadFromFile();
                 break;
-            case '5':
+            case 5:
                 list.printToConsole();
                 break;
-            case '6':
+            case 6:
                 list.insertTextByIndexes();
                 break;
-            case '7':
+            case 7:
                 list.searchTextInList();
                 break;
-            case '8':
+            case 8:
                 clearConsole();
                 break;
-            case '9':
+            case 9:
                 list.deleteTextByIndexes();
                 break;
-            case '10':
+            case 10:
                 cout << "Exiting program..." << endl;
                 // Destructor of TextList will handle memory cleanup
                 exit(0);
                 break;
-            case '11':
+            case 11:
                 list.undoLastChange();
                 break;
-            case '12':
+            case 12:
                 list.redoLastChange();
                 break;
-            case '13':
+            case 13:
                 list.cutTextByIndexes();
                 break;
-            case '14':
+            case 14:
                 list.copyTextByIndexes();
                 break;
-            case '15':
+            case 15:
                 list.pasteTextByIndexes();
                 break;
-            case '16':
+            case 16:
                 list.insertWithReplaceTextByIndexes();
+                break;
+            case 17:
+                handleNormalMode();
+                break;
+            case 18:
+                handleSecretMode();
                 break;
             default:
                 cout << "Invalid command, please enter a valid command." << endl;
                 break;
         }
+        cout << "\nCommand executed.\n";
     }
     return 0;
 }
+// /Users/antoninanovak/CLionProjects/Assignment2_Paradigms/cmake-build-debug/11_3.txt
